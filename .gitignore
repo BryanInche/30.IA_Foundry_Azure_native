@@ -1,0 +1,130 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# Virtual environments
+.venv/
+venv/
+venv_foundry_ai/
+ENV/
+env/
+
+# =========================
+# Environment & secrets
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+secrets/
+local.settings.json
+
+# =========================
+# Node / Frontend (Vue)
+# =========================
+node_modules/
+dist/
+.dist/
+*.local
+.npm
+.yarn/
+.pnp.*
+.pnpm-store/
+
+# =========================
+# IDE & editors
+# =========================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# =========================
+# OS
+# =========================
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========================
+# Azure / Cloud
+# =========================
+.azure/
+*.publishsettings
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Logs & temp
+# =========================
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# =========================
+# Testing & coverage
+# =========================
+coverage/
+.nyc_output/
+*.cover
+
+# =========================
+# Project specific
+# =========================
+# Si en el futuro generas embeddings o índices locales:
+.embeddings/
+.search_index/
+*.faiss
