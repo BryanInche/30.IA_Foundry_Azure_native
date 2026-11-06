@@ -14,6 +14,10 @@ import os
 from pathlib import Path
 from typing import List
 
+from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+
 # ======================
 # CONFIGURACIÓN
 # ======================
@@ -21,6 +25,12 @@ USE_AZURE = False  # Cambiar a True cuando se tenga  suscripción de Azure
 
 DOCS_FOLDER = Path("C:\Freelance\Azure_Foundry_Native\sample_policies_data")  # Carpeta donde están los PDFs de politicas internas
 INDEX_NAME = "policies-index"
+
+OUTPUT_CHUNKS_FILE = DOCS_FOLDER / "chunks_preview.json"
+
+# Parámetros de chunking profesional
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 200
 
 # Azure (solo se usan si USE_AZURE = True)
 AZURE_SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
