@@ -18,19 +18,21 @@ from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
+import json
+
 # ======================
 # CONFIGURACIÓN
 # ======================
 USE_AZURE = False  # Cambiar a True cuando se tenga  suscripción de Azure
 
-DOCS_FOLDER = Path("C:\Freelance\Azure_Foundry_Native\sample_policies_data")  # Carpeta donde están los PDFs de politicas internas
+DOCS_FOLDER = Path("sample_policies_data")  # Carpeta donde están los PDFs de politicas internas
 INDEX_NAME = "policies-index"
 
 OUTPUT_CHUNKS_FILE = DOCS_FOLDER / "chunks_preview.json"
 
 # Parámetros de chunking profesional
 CHUNK_SIZE = 1000
-CHUNK_OVERLAP = 200
+CHUNK_OVERLAP = 150
 
 # Azure (solo se usan si USE_AZURE = True)
 AZURE_SEARCH_ENDPOINT = os.getenv("AZURE_SEARCH_ENDPOINT", "")
@@ -42,108 +44,118 @@ AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.getenv(
 )
 
 
-def load_pdfs(folder: Path) -> List[dict]:
-    """Carga todos los PDFs de la carpeta y extrae texto por página."""
-    try:
-        from pypdf import PdfReader
-    except ImportError:
-        raise ImportError("Instala pypdf: pip install pypdf")
+def load_documents(folder: Path) -> List[Document]:
+    """
+    Carga todos los PDFs de la carpeta usando LangChain DirectoryLoader + PyPDFLoader.
+    Cada página se convierte en un Document con metadata.
+    """
+    if not folder.exists():
+        raise FileNotFoundError(f"No se encontró la carpeta: {folder.resolve()}")
 
-    documents = []
-    pdf_files = list(folder.glob("*.pdf"))
+    loader = DirectoryLoader(
+        path=str(folder),
+        glob="**/*.pdf",
+        loader_cls=PyPDFLoader,
+        show_progress=True,
+        use_multithreading=True,
+    )
 
-    if not pdf_files:
+    documents = loader.load()
+
+    if not documents:
         print(f"No se encontraron PDFs en: {folder.resolve()}")
         return []
 
-    print(f" Encontrados {len(pdf_files)} PDFs:")
-    for pdf_path in pdf_files:
-        print(f"   - {pdf_path.name}")
-        reader = PdfReader(str(pdf_path))
-        for page_num, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
-            if text.strip():
-                documents.append({
-                    "id": f"{pdf_path.stem}_p{page_num}",
-                    "title": pdf_path.stem.replace("_", " "),
-                    "source": pdf_path.name,
-                    "page": page_num,
-                    "content": text.strip(),
-                })
-
-    print(f"Extraídas {len(documents)} páginas con contenido.")
+    print(f"Cargados {len(documents)} páginas desde PDFs.")
     return documents
 
+def split_documents(documents: List[Document]) -> List[Document]:
+    """
+    Divide los documentos con RecursiveCharacterTextSplitter (estándar profesional).
+    Respeta párrafos, oraciones y palabras en ese orden de prioridad.
+    """
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""],
+        is_separator_regex=False,
+    )
 
-def chunk_documents(documents: List[dict], chunk_size: int = 800, overlap: int = 150) -> List[dict]:
-    """Divide el texto en chunks con solapamiento."""
-    chunks = []
-    for doc in documents:
-        text = doc["content"]
-        start = 0
-        chunk_id = 0
-        while start < len(text):
-            end = start + chunk_size
-            chunk_text = text[start:end].strip()
-            if chunk_text:
-                chunks.append({
-                    "id": f"{doc['id']}_c{chunk_id}",
-                    "title": doc["title"],
-                    "source": doc["source"],
-                    "page": doc["page"],
-                    "content": chunk_text,
-                })
-                chunk_id += 1
-            start += chunk_size - overlap
-    print(f" Generados {len(chunks)} chunks.")
+    chunks = text_splitter.split_documents(documents)
+    print(f" Generados {len(chunks)} chunks (size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP}).")
     return chunks
 
+def save_chunks_preview(chunks: List[Document], output_path: Path):
+    """Guarda una vista previa de los chunks en JSON (útil para desarrollo y debug)."""
+    preview = []
+    for i, chunk in enumerate(chunks):
+        preview.append({
+            "id": f"chunk_{i}",
+            "content": chunk.page_content,
+            "metadata": chunk.metadata,
+            "char_count": len(chunk.page_content),
+        })
 
-def ingest_local(chunks: List[dict]):
-    """Modo local: guarda los chunks en un JSON para desarrollo."""
-    import json
-    output_path = Path("sample_policies_data/chunks_preview.json")
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(chunks, f, ensure_ascii=False, indent=2)
-    print(f"Chunks guardados en: {output_path}")
-    print("   (En producción estos chunks se indexan en Azure AI Search)")
+        json.dump(preview, f, ensure_ascii=False, indent=2)
+
+    print(f"Vista previa guardada en: {output_path}")
+
+def ingest_local(chunks: List[Document]):
+    """Modo local: solo genera y guarda los chunks para inspección."""
+    save_chunks_preview(chunks, OUTPUT_CHUNKS_FILE)
+    print("   (En producción estos chunks se indexan en Azure AI Search + embeddings)")
 
 
-def ingest_azure(chunks: List[dict]):
+def ingest_azure(chunks: List[Document]):
     """
-    Modo Azure: genera embeddings y sube a Azure AI Search.
-    Requiere: azure-search-documents, openai, variables de entorno configuradas.
+    Modo Azure (listo para activar cuando tengas suscripción):
+    1. Genera embeddings con Azure OpenAI
+    2. Upsert a Azure AI Search
     """
-    print("   Modo Azure activado (aún no implementado completamente).")
-    print("   Próximos pasos cuando tengas suscripción:")
-    print("   1. Crear índice en Azure AI Search con campos: id, title, content, source, page, embedding")
-    print("   2. Generar embeddings con text-embedding-3-large")
-    print("   3. Upsert de los documentos")
-    # Aquí irá el código real de Azure AI Search + embeddings
+    print("   Modo Azure activado.")
+    print("   TODO: implementar AzureOpenAIEmbeddings + AzureSearch")
+    # from langchain_openai import AzureOpenAIEmbeddings
+    # from langchain_community.vectorstores.azuresearch import AzureSearch
+    #
+    # embeddings = AzureOpenAIEmbeddings(
+    #     azure_deployment=AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
+    #     azure_endpoint=AZURE_OPENAI_ENDPOINT,
+    #     api_key=AZURE_OPENAI_API_KEY,
+    # )
+    # vector_store = AzureSearch(
+    #     azure_search_endpoint=AZURE_SEARCH_ENDPOINT,
+    #     azure_search_key=AZURE_SEARCH_API_KEY,
+    #     index_name=INDEX_NAME,
+    #     embedding_function=embeddings.embed_query,
+    # )
+    # vector_store.add_documents(chunks)
+    # print(f" {len(chunks)} chunks indexados en Azure AI Search ({INDEX_NAME})")
 
 
 def main():
     print("=" * 60)
     print("  INGESTA DE POLÍTICAS INTERNAS - Enterprise Policy Assistant")
+    print("  (LangChain: PyPDFLoader + RecursiveCharacterTextSplitter)")
     print("=" * 60)
 
-    if not DOCS_FOLDER.exists():
-        print(f" Carpeta no encontrada: {DOCS_FOLDER.resolve()}")
-        return
-
-    documents = load_pdfs(DOCS_FOLDER)
+    # 1. Carga profesional de PDFs
+    documents = load_documents(DOCS_FOLDER)
     if not documents:
         return
 
-    chunks = chunk_documents(documents)
+    # 2. Chunking profesional
+    chunks = split_documents(documents)
 
+    # 3. Ingesta (local o Azure)
     if USE_AZURE:
         ingest_azure(chunks)
     else:
         ingest_local(chunks)
 
     print("\n Ingesta finalizada.")
-    print("   Siguiente paso: conectar estos chunks al RAG Service del backend.")
+    print("   Siguiente paso: conectar estos chunks al RAGService del backend.")
 
 
 if __name__ == "__main__":
